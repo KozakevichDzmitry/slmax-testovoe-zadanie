@@ -7,17 +7,32 @@ class Users extends User
 
     public function __construct($db, $params = [], $compare = [])
     {
+        //Проверка наличия класса от которого наследуется
+        if (!class_exists('User', false)) {
+            throw new LogicException("Unable to load class: User");
+        }
+
+        // Сохранение класса для работы с БД
         $this->db = $db;
+
+        // Валидация параметров запроса
         $paramsValidate = array();
         foreach ($params as $param => $value) {
             $paramsValidate[$param] = $this->validate($param, $value);
         }
+
+        // Выборка людей по параметрам
         $results = $this->getUsers($paramsValidate, $compare);
         foreach ($results as $result) {
             $this->id[] = $result['id'];
         }
     }
 
+
+    /**
+     * Получение массива экземпляров класса User из массива id класса Users
+     * Возвращает экземпляры класса User
+     */
     public function getArrayUsers()
     {
         $users = array();
@@ -33,12 +48,9 @@ class Users extends User
 
     public function deleteAll()
     {
-        $this->delete($this->id);
+        $ids = $this->id;
+        foreach ($ids as $id) {
+            $this->delete($id);
+        }
     }
-
-    public function getIds()
-    {
-        return $this->id;
-    }
-
 }

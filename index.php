@@ -24,13 +24,19 @@ $userInfo3= [
     'gender'    => 0,
     'city'      => 'Akron'
 ];
+
 $db = new DB(dbinfo());
-$user = new User($db, $userInfo1);
-$user = new User($db, $userInfo2);
-$user = new User($db, $userInfo3);
-//$user->delete();
+
+$user = new User($db, $userInfo1);;
+$user2 = new User($db, $userInfo2);
+$user3 = new User($db, $userInfo3);
+
 //print_r($user->format());
-$users = new Users($db, ['gender' => 1, 'birthdate' => '02.04.1991',], ['birthdate' => '>=']);
-//print_r($users->getIds());
+//$user->delete();
+
+
+//$users = new Users($db, ['gender' => 1, 'birthdate' => '02.04.1995',], ['birthdate' => '>=']);
+//$users = new Users($db);
+
 //print_r($users->getArrayUsers());
 //$users->deleteAll();

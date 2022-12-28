@@ -10,14 +10,17 @@ class User
     private $gender;
     private $city;
 
+
     public function __construct($db, $userInfo)
     {
+        // Сохранение класса для работы с БД
         $this->db = $db;
+        // Инициализация полей класс
         $this->init($userInfo);
-        $user = $this->getUsers();
+        //Добавление человека в БД с проверкой на дубликат
+        $user = $this->existInDB();
         if (empty($user)) {
-            $this->save();
-            $this->id = $this->db->lastInsertId();
+            $this->id = $this->save();
         } else {
             $this->id = $user[0]['id'];
         }
@@ -30,18 +33,39 @@ class User
         }
     }
 
+
+    /**
+     * Проверка существует ли человек в БД.
+     * Возвращает данные из БД или null
+     */
+    private function existInDB()
+    {
+        $params = [
+            'name' => $this->name,
+            'surname' => $this->surname,
+            'birthdate' => $this->birthdate,
+            'gender' => $this->gender,
+            'city' => $this->city,
+        ];
+        return $this->getUsers($params);
+    }
+
+
+    /**
+     * Сохранение полей экземпляра класса ($id, $name, $surname, $birthdate, $gender, $city) в БД.
+     * Возвращает id сохранения в БД
+     */
     private function save()
     {
         $query = 'INSERT INTO `users` ( name, surname, birthdate, gender, city ) 
                   VALUES ( :name, :surname, :birthdate, :gender, :city )';
         $params = [
-            'name'      => $this->name,
-            'surname'   => $this->surname,
+            'name' => $this->name,
+            'surname' => $this->surname,
             'birthdate' => $this->birthdate,
-            'gender'    => $this->gender,
-            'city'      => $this->city,
+            'gender' => $this->gender,
+            'city' => $this->city,
         ];
-
         try {
             $db = $this->db->connect();
             $stmt = $db->prepare($query);
@@ -49,7 +73,7 @@ class User
                 $stmt->bindValue(":$key", $value);
             }
             $stmt->execute();
-            return true;
+            return $db->lastInsertId();
         } catch (PDOException $e) {
             throw new Exception($e->getMessage());
         } finally {
@@ -58,39 +82,38 @@ class User
 
     }
 
-    public function delete($ids = array())
+
+    /**
+     * Удаление человека из БД по id
+     */
+    public function delete($id=null)
     {
-        if (!$ids) {
-            if (!$this->id) throw new Exception('Users not found');
-            $ids = array($this->id);
+        if(!empty($this->id)) {
+            $id= $this->id;
         }
         try {
-            foreach ($ids as $id) {
-                $query = "DELETE FROM `users` WHERE id = {$id}";
-                $stmt = $this->db->connect()->prepare($query);
-                $stmt->execute();
-            }
+            $query = "DELETE FROM `users` WHERE id = {$id}";
+            $stmt = $this->db->connect()->prepare($query);
+            $stmt->execute();
         } catch (PDOException $e) {
             throw new Exception($e->getMessage());
         } finally {
             $this->db->disconnect();
         }
-
     }
 
-    protected function getUsers($params = [], $compare = [])
-    {
-        if (!$params) {
-            $params = [
-                'name'      => $this->name,
-                'surname'   => $this->surname,
-                'birthdate' => $this->birthdate,
-                'gender'    => $this->gender,
-                'city'      => $this->city,
-            ];
-        }
-        $query = self::query("SELECT * FROM `users` WHERE", $params, $compare);
 
+    /**
+     * Поучение людей из БД по параметрам.
+     * Вызов без параметров возвращает всю таблицу
+     */
+    protected function getUsers($params, $compare = [])
+    {
+        if ($params) {
+            $query = self::query("SELECT * FROM `users` WHERE", $params, $compare);
+        } else {
+            $query = "SELECT * FROM `users`";
+        }
         try {
             $stmt = $this->db->connect()->prepare($query);
             $stmt->execute($params);
@@ -102,6 +125,10 @@ class User
         }
     }
 
+
+    /**
+     * Формирует строку запрос к БД
+     */
     static function query($query, $params, $compare)
     {
         $keys = array_keys($params);
@@ -115,6 +142,22 @@ class User
         return $query;
     }
 
+
+    /**
+     * Преобразование даты рождения в возраст (полных лет)
+     */
+    public static function getAge($date)
+    {
+        $birthdate = new DateTime($date);
+        $now = new DateTime();
+        $interval = $now->diff($birthdate);
+        return $interval->format('%y');
+    }
+
+
+    /**
+     * Преобразование пола из двоичной системы в текстовую (1 - муж, 0 - жен)
+     */
     public static function genderToString($gender = null)
     {
         if ($gender === 0) {
@@ -126,22 +169,22 @@ class User
         }
     }
 
-    public static function getAge($date)
-    {
-        $birthdate = new DateTime($date);
-        $now = new DateTime();
-        $interval = $now->diff($birthdate);
-        return $interval->format('%y');
-    }
 
-    protected function validate($type, $value)
+    /**
+     * Валидация входных данных
+     * $param:
+     *      name, surname - только буквы
+     *      birthdate - дата в формате '01.01.2022'
+     *      gender - 0 или 1
+     */
+    protected function validate($param, $value)
     {
-        if ($type === 'name') {
+        if ($param === 'name' || $param === 'surname') {
             if (!preg_match("/^[a-zA-Zа-яёА-ЯЁ]+$/u", $value)) {
                 throw new Exception("Name is invalid");
             }
             return $value;
-        } elseif ($type === 'birthdate') {
+        } elseif ($param === 'birthdate') {
             $data = trim($value);
             $dataArr = explode('.', $data);
             if (!checkdate($dataArr[1], $dataArr[0], $dataArr[2])) {
@@ -149,7 +192,7 @@ class User
             }
             $data = new DateTime($data);
             return $data->format("Y-m-d");
-        } elseif ($type === 'gender') {
+        } elseif ($param === 'gender') {
             if ($value != 0 && $value != 1) {
                 throw new Exception("Gender is invalid. Input 0 or 1(0-муж, 1-жен)");
             }
@@ -158,17 +201,22 @@ class User
         return $value;
     }
 
+
+    /**
+     * Форматирование данных с преобразованием возраста и (или) пола.
+     * Возвращает новый экземпляр stdClass
+     */
     public function format()
     {
         $gender = self::genderToString($this->gender);
         $birthdate = self::getAge($this->birthdate);
         return (object)[
-            'id'        => $this->id,
-            'name'      => $this->name,
-            'surname'   => $this->surname,
+            'id' => $this->id,
+            'name' => $this->name,
+            'surname' => $this->surname,
             'birthdate' => $birthdate,
-            'gender'    => $gender,
-            'city'      => $this->city,
+            'gender' => $gender,
+            'city' => $this->city,
         ];
     }
 }
