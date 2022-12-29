@@ -2,122 +2,145 @@
 
 class User
 {
-    protected $db;
-    private $id;
-    private $name;
-    private $surname;
-    private $birthdate;
-    private $gender;
-    private $city;
+    const GENDER_MALE = 1;
+    const GENDER_FEMALE = 0;
 
+    private static array $genders = [
+        self::GENDER_MALE => 'Male',
+        self::GENDER_FEMALE => 'Female',
+    ];
+
+    private $db;
+    private int $id;
+    private string $name;
+    private string $surname;
+    private string $birthdate;
+    private int $gender;
+    private string $city;
 
     public function __construct($db, $userInfo)
     {
-        // Сохранение класса для работы с БД
+        // Saving a class for working with a database
         $this->db = $db;
-        // Инициализация полей класс
-        $this->init($userInfo);
-        //Добавление человека в БД с проверкой на дубликат
-        $user = $this->existInDB();
-        if (empty($user)) {
-            $this->id = $this->save();
-        } else {
-            $this->id = $user[0]['id'];
-        }
-    }
 
-    private function init($userInfo)
-    {
-        foreach ($userInfo as $param => $value) {
-            $this->$param = $this->validate($param, $value);
+        if(is_array($userInfo)){
+            $this->validate($userInfo);
+            $params = $this->prepareParams($userInfo);
+            $userID = $this->getUserID($params);
+            if (!$userID) {
+                $userID = $this->save($params);
+            }
+            $params['id'] = $userID;
+            $this->setParams($params);
+        }elseif(is_int($userInfo)){ // if it's a number, then it's an id
+            $user = $this->getUserById($userInfo);
+            if(empty($user)){
+                throw new Exception('User by this id not found');
+            }
+            $this->setParams($user);
         }
-    }
 
+    }
 
     /**
-     * Проверка существует ли человек в БД.
-     * Возвращает данные из БД или null
+     * Sets the passed values to class parameters
      */
-    private function existInDB()
+    private function setParams($data): void
+    {
+        $this->id = (int)$data['id'];
+        $this->name = $data['name'];
+        $this->surname = $data['surname'];
+        $this->gender = (int)$data['gender'];
+        $this->city = $data['city'];
+        $this->birthdate = $data['birthdate'];
+    }
+
+    /**
+     * Returns id or null from DB
+     * @throws Exception
+     */
+    private function getUserID($userInfo): ?string
     {
         $params = [
-            'name' => $this->name,
-            'surname' => $this->surname,
-            'birthdate' => $this->birthdate,
-            'gender' => $this->gender,
-            'city' => $this->city,
+            'name' => $userInfo['name'],
+            'surname' => $userInfo['surname'],
+            'birthdate' => $userInfo['birthdate'],
+            'gender' => $userInfo['gender'],
+            'city' => $userInfo['city'],
         ];
-        return $this->getUsers($params);
+        $user = $this->getUser($params);
+
+        return $user ? $user['id'] : null;
     }
 
-
     /**
-     * Сохранение полей экземпляра класса ($id, $name, $surname, $birthdate, $gender, $city) в БД.
-     * Возвращает id сохранения в БД
+     * Saving class instance fields ($id, $name, $surname, $birthdate, $gender, $city) in DB.
+     * Returns id from DB
+     * @throws Exception
      */
-    private function save()
+    private function save($userInfo): string
     {
         $query = 'INSERT INTO `users` ( name, surname, birthdate, gender, city ) 
                   VALUES ( :name, :surname, :birthdate, :gender, :city )';
         $params = [
-            'name' => $this->name,
-            'surname' => $this->surname,
-            'birthdate' => $this->birthdate,
-            'gender' => $this->gender,
-            'city' => $this->city,
+            'name' => $userInfo['name'],
+            'surname' => $userInfo['surname'],
+            'birthdate' => $userInfo['birthdate'],
+            'gender' => $userInfo['gender'],
+            'city' => $userInfo['city'],
         ];
         try {
             $db = $this->db->connect();
-            $stmt = $db->prepare($query);
+            $statement = $db->prepare($query);
             foreach ($params as $key => $value) {
-                $stmt->bindValue(":$key", $value);
+                $statement->bindValue(":$key", $value);
             }
-            $stmt->execute();
+            $statement->execute();
             return $db->lastInsertId();
         } catch (PDOException $e) {
             throw new Exception($e->getMessage());
         } finally {
             $this->db->disconnect();
         }
-
     }
 
-
     /**
-     * Удаление человека из БД по id
+     * Delete user from DB
+     * @throws Exception
      */
-    public function delete($id=null)
+    public function delete(): bool
     {
-        if(!empty($this->id)) {
-            $id= $this->id;
-        }
+        $id = $this->id;
+
         try {
             $query = "DELETE FROM `users` WHERE id = {$id}";
-            $stmt = $this->db->connect()->prepare($query);
-            $stmt->execute();
+            $statement = $this->db->connect()->prepare($query);
+            $statement->execute();
         } catch (PDOException $e) {
             throw new Exception($e->getMessage());
         } finally {
             $this->db->disconnect();
         }
+        return true;
     }
 
-
     /**
-     * Поучение людей из БД по параметрам.
-     * Вызов без параметров возвращает всю таблицу
+     * Get user from DB by ID.
+     * @throws Exception
      */
-    protected function getUsers($params, $compare = [])
+    public function getUserById($id): ?array
     {
-        if ($params) {
-            $query = self::query("SELECT * FROM `users` WHERE", $params, $compare);
-        } else {
-            $query = "SELECT * FROM `users`";
-        }
+        $query = "SELECT * FROM `users` WHERE id = :id";
+        $param = ['id' => $id];
+
         try {
-            $stmt = $this->db->connect()->prepare($query);
-            $stmt->execute($params);
-            return $stmt->fetchAll();
+            $statement = $this->db->connect()->prepare($query);
+            $statement->execute($param);
+            $result = $statement->fetchAll();
+            if(empty($result)){
+                return null;
+            }
+            return $result[0];
         } catch (PDOException $e) {
             throw new Exception($e->getMessage());
         } finally {
@@ -125,28 +148,64 @@ class User
         }
     }
 
+    /**
+     * Get user from DB by params.
+     * @throws Exception
+     */
+    private function getUser($params): ?array
+    {
+        if(empty($params)){
+            throw new Exception('Function parameters are not set');
+        }
+
+        $query = self::query("SELECT * FROM `users` WHERE", $params);
+
+        try {
+            $statement = $this->db->connect()->prepare($query);
+            $statement->execute($params);
+            $result = $statement->fetchAll();
+            if(empty($result)){
+                return null;
+            }
+            return $result[0];
+        } catch (PDOException $e) {
+            throw new Exception($e->getMessage());
+        } finally {
+            $this->db->disconnect();
+        }
+    }
 
     /**
-     * Формирует строку запрос к БД
+     * Preparing parameters for a query
      */
-    static function query($query, $params, $compare)
+    public static function prepareParams($params): array
+    {
+        if( array_key_exists( 'birthdate' ,$params ) ) {
+            $data = new DateTime(trim($params['birthdate']));
+            $params['birthdate'] = $data->format("Y-m-d");
+        }
+        return $params;
+    }
+
+    /**
+     * Generates a query string to the database
+     */
+    public static function query($query, $params): string
     {
         $keys = array_keys($params);
         for ($i = 0; $i < count($keys); $i++) {
-            if (array_key_exists($keys[$i], $compare)) $operator = $compare[$keys[$i]];
-            else $operator = '=';
-
-            $query .= " $keys[$i] $operator :$keys[$i]";
-            if (count($keys) - 1 !== $i) $query .= ' &&';
+            $query .= " $keys[$i] = :$keys[$i]";
+            if (count($keys) - 1 !== $i) {
+                $query .= ' &&';
+            }
         }
         return $query;
     }
 
-
     /**
-     * Преобразование даты рождения в возраст (полных лет)
+     * Conversion of date of birth to age (full years)
      */
-    public static function getAge($date)
+    public static function getAge($date): int
     {
         $birthdate = new DateTime($date);
         $now = new DateTime();
@@ -154,69 +213,67 @@ class User
         return $interval->format('%y');
     }
 
-
     /**
-     * Преобразование пола из двоичной системы в текстовую (1 - муж, 0 - жен)
+     * Converting gender from binary to text system (1 - male, 0 - female)
+     * @throws Exception
      */
-    public static function genderToString($gender = null)
+    public static function genderToString($gender = null): string
     {
-        if ($gender === 0) {
-            return 'жен';
-        } else if ($gender === 1) {
-            return 'муж';
+        if (isset(static::$genders[$gender])) {
+            return static::$genders[$gender];
         } else {
             throw new Exception("Input 0 or 1");
         }
     }
 
-
     /**
-     * Валидация входных данных
+     * Validation of input data
      * $param:
-     *      name, surname - только буквы
-     *      birthdate - дата в формате '01.01.2022'
-     *      gender - 0 или 1
+     *      name, surname - only letters
+     *      birthdate - date in the format '01.01.2022'
+     *      gender - 0 or 1
+     * @throws Exception
      */
-    protected function validate($param, $value)
+    protected function validate($userInfo): bool
     {
-        if ($param === 'name' || $param === 'surname') {
-            if (!preg_match("/^[a-zA-Zа-яёА-ЯЁ]+$/u", $value)) {
-                throw new Exception("Name is invalid");
+        foreach ($userInfo as $param => $value) {
+            if ($param === 'name' or $param === 'surname') {
+                if (!preg_match("/^[a-zA-Zа-яёА-ЯЁ]+$/u", $value)) {
+                    throw new Exception("Name is invalid");
+                }
+            } elseif ($param === 'birthdate') {
+                $data = trim($value);
+                $dataArr = explode('.', $data);
+                if (!checkdate($dataArr[1], $dataArr[0], $dataArr[2])) {
+                    throw new Exception("Birthdate is invalid (Valid format: '01.01.2022')");
+                }
+            } elseif ($param === 'gender') {
+                if (!in_array($value, array_keys(static::$genders))) {
+                    throw new Exception("Gender is invalid. Input 0 or 1(0-муж, 1-жен)");
+                }
             }
-            return $value;
-        } elseif ($param === 'birthdate') {
-            $data = trim($value);
-            $dataArr = explode('.', $data);
-            if (!checkdate($dataArr[1], $dataArr[0], $dataArr[2])) {
-                throw new Exception("Birthdate is invalid (Valid format: '01.01.2022')");
-            }
-            $data = new DateTime($data);
-            return $data->format("Y-m-d");
-        } elseif ($param === 'gender') {
-            if ($value != 0 && $value != 1) {
-                throw new Exception("Gender is invalid. Input 0 or 1(0-муж, 1-жен)");
-            }
-            return $value;
         }
-        return $value;
+        return true;
     }
 
 
     /**
-     * Форматирование данных с преобразованием возраста и (или) пола.
-     * Возвращает новый экземпляр stdClass
+     * Formatting of data with conversion of age and (or) gender.
+     * Returns a new instance stdClass
+     * @throws Exception
      */
-    public function format()
+    public function format(): StdClass
     {
         $gender = self::genderToString($this->gender);
         $birthdate = self::getAge($this->birthdate);
-        return (object)[
-            'id' => $this->id,
-            'name' => $this->name,
-            'surname' => $this->surname,
-            'birthdate' => $birthdate,
-            'gender' => $gender,
-            'city' => $this->city,
-        ];
+
+        $user = new StdClass;
+        $user->id = $this->id;
+        $user->name = $this->name;
+        $user->surname = $this->surname;
+        $user->birthdate = $birthdate;
+        $user->gender = $gender;
+
+        return $user;
     }
 }

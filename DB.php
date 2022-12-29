@@ -1,11 +1,12 @@
 <?php
 class DB
 {
-    private $host;
-    private $dbname;
-    private $login;
-    private $password;
-    private $isConnect;
+    private string $host;
+    private string $dbname;
+    private string $login;
+    private string $password;
+    private bool $isConnect;
+    private ?PDO $db;
 
     public function __construct($dbinfo)
     {
@@ -17,9 +18,8 @@ class DB
 
     }
 
-    public function connect()
+    public function connect() : PDO
     {
-
         try {
             $this->db = new PDO("mysql:host={$this->host};dbname={$this->dbname}", $this->login, $this->password);
             $this->db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
@@ -31,7 +31,7 @@ class DB
         }
     }
 
-    public function disconnect()
+    public function disconnect() :void
     {
         if($this->isConnect){
             $this->db = null;
